@@ -1,0 +1,36 @@
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: file:/data/prod.db
+    volumes:
+      - crm-data:/data
+
+  # Hits the app's own /api/ingest endpoint on a schedule so mentions and
+  # brand signals keep updating. Talks to `app` over the internal Docker
+  # network only — never touches the SQLite file directly, so there's no
+  # multi-process contention on /data.
+  scanner:
+    image: curlimages/curl:latest
+    restart: unless-stopped
+    depends_on:
+      - app
+    env_file:
+      - .env
+    entrypoint: ["sh", "-c"]
+    command:
+      - |
+        sleep 15
+        while true; do
+          curl -fsS -X POST http://app:3000/api/ingest \
+            -H "Authorization: Bearer $$INGEST_SECRET" || true
+          sleep 1800
+        done
+
+volumes:
+  crm-data:

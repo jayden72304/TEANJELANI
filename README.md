@@ -121,44 +121,92 @@ src/app/(app)/*                Authenticated app (dashboard, clients, contracts,
 | `npm run ingest` | Run one media/brand monitoring scan (cron this) |
 | `npm run lint` | Lint |
 
-## Keeping it always available (Render)
+## Keeping it always available
 
-This app needs a persistent filesystem for the SQLite file and a way to run a
-scan on a schedule — both handled by the included `render.yaml` Blueprint,
-which provisions two services on [Render](https://render.com):
+Two ways to do this, depending on whether you'd rather pay a small monthly
+fee for zero setup, or spend a bit more time up front to run it for free.
 
-- **`agent-client-hub`** — the web app, with a 1GB persistent disk mounted at
-  `/data` holding the SQLite database. Migrations run and the admin login is
-  (re-)seeded automatically on every deploy.
-- **`agent-client-hub-scan`** — a cron job (every 30 minutes) that calls the
-  `POST /api/ingest` endpoint on the web service to trigger a scan, so
-  mentions and brand signals keep updating without anyone clicking the button.
+### Option A — Render (~$7/mo, ~5 minutes of setup)
 
-### Steps
+The included `render.yaml` Blueprint provisions two services on
+[Render](https://render.com): the web app on a 1GB persistent disk (SQLite
+lives at `/data`, migrations + admin seeding run automatically on every
+deploy), and a cron job that calls `POST /api/ingest` every 30 minutes so
+mentions and brand signals keep updating on their own.
 
-1. Push this repo to your own GitHub account (fork it, or push this branch to
-   a repo you own — Render deploys from a GitHub/GitLab repo you connect).
-2. In the Render dashboard: **New → Blueprint**, connect that repo, and pick
-   the branch. Render reads `render.yaml` and provisions both services.
-3. When prompted for env vars, set `SEED_ADMIN_EMAIL` and
-   `SEED_ADMIN_PASSWORD` to your real admin login (don't leave the
-   `agent@example.com` / `ChangeMe123!` default on a public deployment).
-   `SESSION_SECRET` and `INGEST_SECRET` are generated for you automatically.
-4. Deploy. Render builds, runs migrations, seeds the admin user, and starts
-   the app — you'll get a permanent `https://agent-client-hub.onrender.com`
-   -style URL (or attach a custom domain in the service settings).
-5. Log in with the admin credentials from step 3 and delete the seeded demo
-   client ("Malik Bridges") once you're ready to add real ones.
+1. Push this repo to your own GitHub account.
+2. Render dashboard → **New → Blueprint** → connect that repo/branch. It
+   reads `render.yaml` and provisions both services.
+3. When prompted, set `SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD` to a real
+   login (don't leave the `agent@example.com` / `ChangeMe123!` default on a
+   public deployment). `SESSION_SECRET` and `INGEST_SECRET` are generated
+   for you.
+4. Deploy → you get a permanent `https://agent-client-hub.onrender.com`
+   -style URL (custom domains supported).
 
-**Note:** a service with a disk runs as a single instance (no
-horizontal autoscaling) — that's already the default and is what SQLite
-needs, so there's nothing extra to configure.
+### Option B — Docker on a free VM (e.g. Oracle Cloud Always Free), $0/mo
+
+The `Dockerfile` and `docker-compose.yml` in this repo run the app anywhere
+Docker runs — a spare machine, a cheap VPS, or a **genuinely free forever**
+VM from [Oracle Cloud's Always Free tier](https://www.oracle.com/cloud/free/)
+(up to 4 ARM cores / 24GB RAM, no time limit). Two honest caveats before you
+go this route: Oracle requires a credit card for identity verification even
+though the Always Free tier itself never charges you, and free-tier ARM
+capacity is sometimes unavailable in busy regions — if you hit "out of host
+capacity," try a different Availability Domain or region.
+
+**1. Get a VM.** Oracle Cloud console → Compute → Create Instance → shape
+`VM.Standard.A1.Flex` (Always Free eligible) → Ubuntu 24.04 image. In the
+instance's **Security List / Network Security Group**, add an ingress rule
+for port 3000 (and later 80 + 443 once you add HTTPS). Ubuntu images also
+run their own firewall — once you're SSH'd in:
+```bash
+sudo iptables -I INPUT -p tcp --dport 3000 -j ACCEPT
+sudo netfilter-persistent save   # if installed; otherwise repeat after reboot
+```
+
+**2. Install Docker** (any Ubuntu/Debian VM, any provider):
+```bash
+curl -fsSL https://get.docker.com | sudo sh
+sudo usermod -aG docker $USER && newgrp docker
+```
+
+**3. Get the app and configure it:**
+```bash
+git clone https://github.com/jayden72304/TEANJELANI.git
+cd TEANJELANI
+cp .env.example .env
+```
+Edit `.env`: set real `SESSION_SECRET` / `INGEST_SECRET` (`openssl rand
+-base64 32` for each) and `SEED_ADMIN_EMAIL` / `SEED_ADMIN_PASSWORD`.
+
+**4. Run it:**
+```bash
+docker compose up -d --build
+```
+Visit `http://<your-VM's-public-IP>:3000` and log in.
+
+**5. (Recommended before giving your boss the link) Add HTTPS.** Point a
+domain's A record at the VM's public IP, set `DOMAIN=your-domain.com` in
+`.env`, then:
+```bash
+docker compose -f docker-compose.yml -f docker-compose.https.yml up -d --build
+```
+This adds [Caddy](https://caddyserver.com) in front of the app, which
+automatically gets and renews a real Let's Encrypt certificate — no manual
+nginx/certbot config. Without this step the app is reachable but over plain
+HTTP, which means login credentials and client data travel unencrypted —
+fine for you to test with, not something to hand your boss a link to.
+
+**Updating later:** `git pull && docker compose up -d --build`.
 
 ### Alternatives
 
-- **Railway** works the same way conceptually (persistent volume + a second
-  cron/worker service hitting `/api/ingest`), just without a checked-in
-  Blueprint file — configure the two services by hand in its dashboard.
+- **Any other VPS** (a $4–6/mo DigitalOcean/Linode/Hetzner box, if Oracle's
+  free tier doesn't work out for your account/region) — identical Docker
+  steps above; the whole point of containerizing it is host-portability.
+- **Railway** — same idea as Render (persistent volume + a service hitting
+  `/api/ingest` on a schedule), configured by hand in its dashboard.
 - **Outgrowing SQLite / want serverless (Vercel, etc.):** switch
   `datasource.provider` in `prisma/schema.prisma` from `sqlite` to
   `postgresql`, point `DATABASE_URL` at a hosted Postgres (Neon, Supabase,

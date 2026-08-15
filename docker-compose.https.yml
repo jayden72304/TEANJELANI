@@ -1,0 +1,35 @@
+# Optional HTTPS overlay. Once you have a domain pointed at the VM's public
+# IP, enable this alongside the base compose file:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.https.yml up -d --build
+#
+# Caddy automatically requests and renews a Let's Encrypt certificate for
+# $DOMAIN (set it in .env) and proxies to the app over the internal network —
+# no manual nginx/certbot setup needed.
+
+services:
+  app:
+    # No longer needs to be reachable directly; Caddy fronts it. Remove the
+    # host port mapping from the base file's `app` service once this is
+    # working, or leave it if you still want direct :3000 access.
+    expose:
+      - "3000"
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    env_file:
+      - .env
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - app
+
+volumes:
+  caddy-data:
+  caddy-config:
