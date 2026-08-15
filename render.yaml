@@ -1,0 +1,52 @@
+services:
+  # The always-on app itself.
+  - type: web
+    name: agent-client-hub
+    env: node
+    plan: starter
+    buildCommand: npm ci && npx prisma generate && npm run build
+    # Applies any pending migrations, seeds/refreshes the admin login (safe to
+    # re-run — it upserts), then starts the server. Runs on every deploy.
+    startCommand: npx prisma migrate deploy && npm run db:seed && npm start
+    healthCheckPath: /login
+    disk:
+      name: data
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      - key: NODE_VERSION
+        value: 22.11.0
+      - key: DATABASE_URL
+        value: file:/data/prod.db
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: INGEST_SECRET
+        generateValue: true
+      - key: SEED_ADMIN_EMAIL
+        sync: false
+      - key: SEED_ADMIN_PASSWORD
+        sync: false
+
+  # Hits /api/ingest on a schedule so mentions & brand signals keep updating
+  # without anyone clicking "Run scan now." No disk needed — it just calls
+  # the web service over HTTPS.
+  - type: cron
+    name: agent-client-hub-scan
+    env: node
+    plan: starter
+    schedule: "*/30 * * * *"
+    buildCommand: "true"
+    startCommand: >-
+      curl -fsS -X POST "https://$WEB_HOST/api/ingest"
+      -H "Authorization: Bearer $INGEST_SECRET"
+    envVars:
+      - key: WEB_HOST
+        fromService:
+          type: web
+          name: agent-client-hub
+          property: host
+      - key: INGEST_SECRET
+        fromService:
+          type: web
+          name: agent-client-hub
+          envVarKey: INGEST_SECRET

@@ -121,10 +121,47 @@ src/app/(app)/*                Authenticated app (dashboard, clients, contracts,
 | `npm run ingest` | Run one media/brand monitoring scan (cron this) |
 | `npm run lint` | Lint |
 
-## Deploying
+## Keeping it always available (Render)
 
-This app needs a persistent filesystem for the SQLite file (or switch to a
-hosted Postgres — recommended for anything beyond single-instance use) and a
-process/host that can run `npm run ingest` on a schedule. A small VPS,
-Railway, Render, or a Vercel deployment + hosted Postgres + Vercel Cron Job
-all work well.
+This app needs a persistent filesystem for the SQLite file and a way to run a
+scan on a schedule — both handled by the included `render.yaml` Blueprint,
+which provisions two services on [Render](https://render.com):
+
+- **`agent-client-hub`** — the web app, with a 1GB persistent disk mounted at
+  `/data` holding the SQLite database. Migrations run and the admin login is
+  (re-)seeded automatically on every deploy.
+- **`agent-client-hub-scan`** — a cron job (every 30 minutes) that calls the
+  `POST /api/ingest` endpoint on the web service to trigger a scan, so
+  mentions and brand signals keep updating without anyone clicking the button.
+
+### Steps
+
+1. Push this repo to your own GitHub account (fork it, or push this branch to
+   a repo you own — Render deploys from a GitHub/GitLab repo you connect).
+2. In the Render dashboard: **New → Blueprint**, connect that repo, and pick
+   the branch. Render reads `render.yaml` and provisions both services.
+3. When prompted for env vars, set `SEED_ADMIN_EMAIL` and
+   `SEED_ADMIN_PASSWORD` to your real admin login (don't leave the
+   `agent@example.com` / `ChangeMe123!` default on a public deployment).
+   `SESSION_SECRET` and `INGEST_SECRET` are generated for you automatically.
+4. Deploy. Render builds, runs migrations, seeds the admin user, and starts
+   the app — you'll get a permanent `https://agent-client-hub.onrender.com`
+   -style URL (or attach a custom domain in the service settings).
+5. Log in with the admin credentials from step 3 and delete the seeded demo
+   client ("Malik Bridges") once you're ready to add real ones.
+
+**Note:** a service with a disk runs as a single instance (no
+horizontal autoscaling) — that's already the default and is what SQLite
+needs, so there's nothing extra to configure.
+
+### Alternatives
+
+- **Railway** works the same way conceptually (persistent volume + a second
+  cron/worker service hitting `/api/ingest`), just without a checked-in
+  Blueprint file — configure the two services by hand in its dashboard.
+- **Outgrowing SQLite / want serverless (Vercel, etc.):** switch
+  `datasource.provider` in `prisma/schema.prisma` from `sqlite` to
+  `postgresql`, point `DATABASE_URL` at a hosted Postgres (Neon, Supabase,
+  Render Postgres), run `npx prisma migrate deploy`, and use the platform's
+  own cron feature (e.g. Vercel Cron Jobs) to hit `/api/ingest` on a
+  schedule instead of a separate always-on cron service.
