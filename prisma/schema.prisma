@@ -1,0 +1,315 @@
+// Prisma schema for the NBA Agent CRM
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+// ---------- Auth ----------
+
+enum UserRole {
+  AGENT
+  STAFF
+}
+
+model User {
+  id           String   @id @default(cuid())
+  name         String
+  email        String   @unique
+  passwordHash String
+  role         UserRole @default(STAFF)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+// ---------- Component 1: Client Profiles ----------
+
+enum ClientStatus {
+  ACTIVE
+  FORMER
+  PROSPECT
+}
+
+model Client {
+  id           String       @id @default(cuid())
+  firstName    String
+  lastName     String
+  slug         String       @unique
+  team         String?
+  league       String? // NBA, WNBA, G League, Overseas, etc.
+  position     String?
+  jerseyNumber String?
+  birthday     DateTime?
+  status       ClientStatus @default(ACTIVE)
+  photoUrl     String?
+
+  addressLine1 String?
+  addressLine2 String?
+  city         String?
+  state        String?
+  zip          String?
+  country      String?
+
+  notes String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  phones         ClientPhone[]
+  emails         ClientEmail[]
+  familyContacts FamilyContact[]
+  clothingSizes  ClothingSize[]
+  socialHandles  SocialHandle[]
+  contracts      Contract[]
+  leads          Lead[]
+  mentions       WebMention[]
+  keywords       MonitoredKeyword[]
+}
+
+enum PhoneLabel {
+  MOBILE
+  HOME
+  WORK
+  AGENCY
+  OTHER
+}
+
+model ClientPhone {
+  id       String     @id @default(cuid())
+  clientId String
+  client   Client     @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  label    PhoneLabel @default(MOBILE)
+  number   String
+  notes    String?
+
+  @@index([clientId])
+}
+
+enum EmailLabel {
+  PERSONAL
+  WORK
+  AGENCY
+  OTHER
+}
+
+model ClientEmail {
+  id       String     @id @default(cuid())
+  clientId String
+  client   Client     @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  label    EmailLabel @default(PERSONAL)
+  email    String
+  notes    String?
+
+  @@index([clientId])
+}
+
+enum FamilyRelationship {
+  MOTHER
+  FATHER
+  GUARDIAN
+  SPOUSE
+  PARTNER
+  SIBLING
+  CHILD
+  OTHER
+}
+
+model FamilyContact {
+  id           String             @id @default(cuid())
+  clientId     String
+  client       Client             @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  relationship FamilyRelationship
+  name         String
+  phone        String?
+  email        String?
+  notes        String?
+
+  @@index([clientId])
+}
+
+enum ClothingCategory {
+  SHOE
+  SHIRT
+  JACKET_SUIT
+  PANTS_WAIST
+  HAT
+  GLOVE
+  RING
+  OTHER
+}
+
+model ClothingSize {
+  id       String           @id @default(cuid())
+  clientId String
+  client   Client           @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  category ClothingCategory
+  size     String
+  notes    String?
+
+  @@index([clientId])
+}
+
+enum SocialPlatform {
+  INSTAGRAM
+  TWITTER_X
+  TIKTOK
+  FACEBOOK
+  YOUTUBE
+  SNAPCHAT
+  THREADS
+  OTHER
+}
+
+model SocialHandle {
+  id        String         @id @default(cuid())
+  clientId  String
+  client    Client         @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  platform  SocialPlatform
+  handle    String
+  url       String?
+  followers Int?
+  notes     String?
+
+  @@index([clientId])
+}
+
+// ---------- Component 2: Contracts ----------
+
+enum ContractType {
+  LEAGUE
+  MARKETING
+}
+
+enum ContractStatus {
+  DRAFT
+  NEGOTIATING
+  ACTIVE
+  EXPIRED
+  TERMINATED
+}
+
+model Contract {
+  id           String         @id @default(cuid())
+  clientId     String
+  client       Client         @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  type         ContractType
+  title        String
+  counterparty String // Team name (league) or brand/company name (marketing)
+  category     String? // e.g. Endorsement, Shoe Deal, Appearance, Rookie Scale, Veteran Extension
+  status       ContractStatus @default(DRAFT)
+  value        Float?
+  currency     String         @default("USD")
+  signedDate   DateTime?
+  startDate    DateTime?
+  endDate      DateTime?
+  terms        String?
+  documentUrl  String?
+  notes        String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([clientId])
+  @@index([type])
+}
+
+// ---------- Component 3: Leads / Deals pipeline ----------
+
+enum LeadStage {
+  NEW
+  CONTACTED
+  NEGOTIATING
+  WON
+  LOST
+  PASSED
+}
+
+model Lead {
+  id             String    @id @default(cuid())
+  clientId       String?
+  client         Client?   @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  companyName    String
+  contactName    String?
+  contactEmail   String?
+  contactPhone   String?
+  industry       String?
+  stage          LeadStage @default(NEW)
+  estimatedValue Float?
+  source         String? // referral, inbound, brand analytics feed, cold outreach...
+  notes          String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([clientId])
+  @@index([stage])
+}
+
+// ---------- Component 3 & 4: Keyword monitoring + web mentions / brand signals ----------
+
+enum KeywordCategory {
+  CLIENT_MENTION
+  BRAND_WATCH
+  INDUSTRY
+}
+
+model MonitoredKeyword {
+  id        String          @id @default(cuid())
+  keyword   String
+  category  KeywordCategory @default(CLIENT_MENTION)
+  clientId  String?
+  client    Client?         @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  isActive  Boolean         @default(true)
+  createdAt DateTime        @default(now())
+
+  mentions WebMention[]
+
+  @@index([clientId])
+}
+
+enum MentionScope {
+  CLIENT_MENTION
+  BRAND_SIGNAL
+}
+
+enum BrandSignalType {
+  ENTERED_SPORTS
+  ATHLETE_PARTNERSHIP
+  INDUSTRY_NEWS
+}
+
+enum Sentiment {
+  POSITIVE
+  NEUTRAL
+  NEGATIVE
+  UNKNOWN
+}
+
+model WebMention {
+  id         String           @id @default(cuid())
+  scope      MentionScope
+  clientId   String?
+  client     Client?          @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  brandName  String?
+  signalType BrandSignalType?
+
+  title       String
+  snippet     String?
+  url         String    @unique
+  sourceName  String?
+  publishedAt DateTime?
+
+  matchedKeywordId String?
+  matchedKeyword   MonitoredKeyword? @relation(fields: [matchedKeywordId], references: [id], onDelete: SetNull)
+
+  sentiment    Sentiment @default(UNKNOWN)
+  discoveredAt DateTime  @default(now())
+
+  @@index([clientId])
+  @@index([scope])
+}
