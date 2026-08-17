@@ -144,25 +144,57 @@ mentions and brand signals keep updating on their own.
 4. Deploy → you get a permanent `https://agent-client-hub.onrender.com`
    -style URL (custom domains supported).
 
-### Option B — Docker on a free VM (e.g. Oracle Cloud Always Free), $0/mo
+### Option B — Docker on a free VM, $0/mo
 
 The `Dockerfile` and `docker-compose.yml` in this repo run the app anywhere
 Docker runs — a spare machine, a cheap VPS, or a **genuinely free forever**
-VM from [Oracle Cloud's Always Free tier](https://www.oracle.com/cloud/free/)
-(up to 4 ARM cores / 24GB RAM, no time limit). Two honest caveats before you
-go this route: Oracle requires a credit card for identity verification even
-though the Always Free tier itself never charges you, and free-tier ARM
-capacity is sometimes unavailable in busy regions — if you hit "out of host
-capacity," try a different Availability Domain or region.
+VM from a major cloud provider. Two candidates, pick whichever account you
+can actually get into:
 
-**1. Get a VM.** Oracle Cloud console → Compute → Create Instance → shape
-`VM.Standard.A1.Flex` (Always Free eligible) → Ubuntu 24.04 image. In the
-instance's **Security List / Network Security Group**, add an ingress rule
-for port 3000 (and later 80 + 443 once you add HTTPS). Ubuntu images also
-run their own firewall — once you're SSH'd in:
+- **[Oracle Cloud Always Free](https://www.oracle.com/cloud/free/)** — up to
+  4 ARM cores / 24GB RAM, no time limit. The most generous option, but
+  Oracle's account system has a reputation for being finicky (login issues,
+  slow verification), and free-tier ARM capacity is sometimes unavailable in
+  busy regions ("out of host capacity" — try a different Availability
+  Domain/region if you hit it).
+- **[Google Cloud Always Free](https://cloud.google.com/free)** — one
+  `e2-micro` VM (1 shared vCPU, 1GB RAM, 30GB disk), permanently free, only
+  in `us-west1` (Oregon), `us-central1` (Iowa), or `us-east1` (South
+  Carolina). Smaller than Oracle's offer but plenty for a small CRM, and
+  Google's signup/account flow is generally smoother. Both still require a
+  credit card for identity verification (neither charges you on the free
+  tier itself).
+
+**1. Get a VM.**
+
+*Oracle:* Console → Compute → Create Instance → shape `VM.Standard.A1.Flex`
+(Always Free eligible) → Ubuntu 24.04 image.
+
+*Google Cloud:* Console → Compute Engine → VM Instances → Create Instance →
+region **must** be one of the three listed above → machine type `e2-micro`
+→ under **Boot disk**, choose Ubuntu 24.04 → check **Allow HTTP traffic**
+and **Allow HTTPS traffic** under Firewall.
+
+Either way, once it's running you need a firewall rule open for port 3000
+(and later 80 + 443 for HTTPS):
+- Oracle: instance's **Security List / Network Security Group** → add an
+  ingress rule for port 3000.
+- Google Cloud: **VPC network → Firewall** → create a rule allowing tcp:3000
+  from `0.0.0.0/0`.
+
+Ubuntu's own firewall also blocks inbound traffic by default — once you're
+SSH'd in:
 ```bash
 sudo iptables -I INPUT -p tcp --dport 3000 -j ACCEPT
 sudo netfilter-persistent save   # if installed; otherwise repeat after reboot
+```
+
+**On a 1GB-RAM VM (e.g. Google's e2-micro), add swap before building** — the
+Next.js production build can otherwise get killed for using too much memory:
+```bash
+sudo fallocate -l 2G /swapfile && sudo chmod 600 /swapfile
+sudo mkswap /swapfile && sudo swapon /swapfile
+echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
 ```
 
 **2. Install Docker** (any Ubuntu/Debian VM, any provider):
@@ -202,9 +234,9 @@ fine for you to test with, not something to hand your boss a link to.
 
 ### Alternatives
 
-- **Any other VPS** (a $4–6/mo DigitalOcean/Linode/Hetzner box, if Oracle's
-  free tier doesn't work out for your account/region) — identical Docker
-  steps above; the whole point of containerizing it is host-portability.
+- **Any other VPS** (a $4–6/mo DigitalOcean/Linode/Hetzner box, if neither
+  free tier works out for your account/region) — identical Docker steps
+  above; the whole point of containerizing it is host-portability.
 - **Railway** — same idea as Render (persistent volume + a service hitting
   `/api/ingest` on a schedule), configured by hand in its dashboard.
 - **Outgrowing SQLite / want serverless (Vercel, etc.):** switch
