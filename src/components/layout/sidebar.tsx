@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import clsx from "clsx";
 
-const NAV_ITEMS = [
+export const NAV_ITEMS = [
   { href: "/", label: "Dashboard", icon: "home" },
   { href: "/clients", label: "Clients", icon: "users" },
   { href: "/contracts", label: "Contracts", icon: "doc" },
@@ -97,17 +97,13 @@ function Icon({ name }: { name: string }) {
   }
 }
 
-export function Sidebar() {
+// Shared between the persistent desktop sidebar and the mobile drawer so
+// both stay in sync without duplicating the icon markup.
+export function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
 
   return (
-    <nav className="flex h-full w-60 flex-col gap-1 border-r border-slate-800 bg-slate-950 p-4">
-      <div className="mb-6 flex items-center gap-2 px-2">
-        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-orange-500 text-sm font-bold text-white">
-          CRM
-        </div>
-        <span className="text-sm font-semibold text-white">Agent Client Hub</span>
-      </div>
+    <>
       {NAV_ITEMS.map((item) => {
         const active =
           item.href === "/"
@@ -117,6 +113,7 @@ export function Sidebar() {
           <Link
             key={item.href}
             href={item.href}
+            onClick={onNavigate}
             className={clsx(
               "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition",
               active
@@ -129,6 +126,20 @@ export function Sidebar() {
           </Link>
         );
       })}
+    </>
+  );
+}
+
+export function Sidebar() {
+  return (
+    <nav className="hidden h-full w-60 shrink-0 flex-col gap-1 border-r border-slate-800 bg-slate-950 p-4 md:flex">
+      <div className="mb-6 flex items-center gap-2 px-2">
+        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-orange-500 text-sm font-bold text-white">
+          CRM
+        </div>
+        <span className="text-sm font-semibold text-white">Agent Client Hub</span>
+      </div>
+      <NavLinks />
     </nav>
   );
 }

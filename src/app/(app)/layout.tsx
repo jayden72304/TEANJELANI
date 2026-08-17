@@ -12,9 +12,9 @@ export default async function AppLayout({
   return (
     <div className="flex min-h-screen">
       <Sidebar />
-      <div className="flex flex-1 flex-col">
+      <div className="flex min-w-0 flex-1 flex-col">
         <Topbar userName={user.name} />
-        <main className="flex-1 overflow-y-auto bg-slate-950 p-6">
+        <main className="flex-1 overflow-y-auto overflow-x-hidden bg-slate-950 p-4 md:p-6">
           {children}
         </main>
       </div>
